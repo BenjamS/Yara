@@ -1,0 +1,252 @@
+---
+title: "Yara Colombia land use model (Draft)"
+author: "Ben Schiek"
+date: "March 7, 2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Yield $y$ is modeled as a Cobb-Douglas function of agricultural inputs $\mathbf{x}$, technology (input elasticities of yield) $\boldsymbol{\alpha}$, an exogenous scale factor $y_0$, and exogenous factors $\mathbf{k}$ with their corresponding elasticities $\boldsymbol{\beta}$.
+
+\begin{equation}
+y(\mathbf{x}; \mathbf{k}, \boldsymbol{\alpha}, \boldsymbol{\beta}) = y_0 \Pi_i x_i^{\alpha_i} \Pi_i k_i^{\beta_i}
+\end{equation}
+
+The Cobb-Douglas function is famous for its good empirical fit across a wide range of contexts and scales. In Appendix \ref{sec:} I show how the Cobb-Douglas function can be derived from the law of diminishing marginal returns.
+
+In farm yield studies, the exogenous factors $\mathbf{k}$ typically contain demographic variables such as age and education, as well as agroclimatic variables such as soil quality, temperature, and precipitation. These variables can vary considerably across a farm population. Analysis is said to be "ceteris paribus" when these variables are held constant at particular values.
+
+The scale factor $y_0$ is often interpreted as "total factor productivity", that is, overall productivity with respect to all variables []. This implies awkward units of, for example, output per unit volume man-hour kilogram, in the case where input variables are pesticide, labor, and fertilizer, respectively. A more straightforward interpretation suggests itself considering that ...
+
+ceteris paribus unit input yield...basal yield as a shorthand.
+
+Optimal (or "economic") yield $y^*$ is defined as yield evaluated at the optimal input levels $\mathbf{x}^*$. The optimal input levels are those that maximize net benefit subject to a budget constraint. Given the Cobb-Douglas functional form, optimal yield works out to
+
+\begin{equation}
+y^*(y_0, \chi, \kappa, \gamma) = y(\mathbf{x}^*) = (y_0 \chi \gamma \lambda^{-h})^(\frac{1}{1 - h})
+\end{equation}
+
+Where
+
+\begin{equation}
+h = \Sum_i \alpha_i
+\end{equation}
+
+is the yield degree of homogeneity, and
+
+\begin{equation}
+\gamma = \frac{P^h}{\Pi_i w_i^{\alpha_i}}
+\end{equation}
+
+\begin{equation}
+\chi = \Pi_i \alpha_i^{\alpha_i}
+\end{equation}
+
+\begin{equation}
+\kappa = \Pi_i k_i^{\beta_i}
+\end{equation}
+
+Input and output prices vary by department in Colombia. This sub-national variation can be captured in our model using the price data available from DANE and/or the Colombian Ministry of Agriculture.
+
+The following table summarizes the input variables required by the yield model. The basal yield $y_0$, input elasticities $\alpha_i$, and exogenous control elasticities of yield $\beta_i$ are ideally fit to data, but can also be deduced from expert consultation and/or literature if need be.
+
+The distance to market data can be included among the $k_i$.
+
+```{r}
+
+
+var_vec <- c("P", "w_i", "k_i", "y_0", "U+03B1", "\beta_i")
+
+varExpl_vec <- c("output price",
+                 "input price",
+                 "demographic and/or agroclimatic control variables",
+                 "basal yield",
+                 "input elasticities of yield",
+                 "control variable elasticities of yield")
+
+avail_from <- c("https://www.agronet.gov.co/estadistica/paginas/home.aspx",
+"https://www.dane.gov.co/index.php/en/statistics-by-topic/agriculture")
+
+#"https://www.dane.gov.co/index.php/en/statistics-by-topic-1/agricultural-sector/national-agricultural-survey-ena"
+
+
+df_table <- data.frame(Variable = var_vec,
+                       avail_from)
+
+
+```
+
+
+
+
+
+
+# The land use model
+
+A model of how much area is allocated to each agricultural commodity can be built from the log-linear empirical relation between the mean value of agricultural production (VAP) and the standard deviation of VAP. The mean and standard deviation are taken over the years 1961-2018.
+
+```{r, fig.show = "hold", fig.width = 5, fig.height=4, fig.align="left", fig.cap="\\label{fig:foodSec}A log-linear empirical relation exists between mean VAP and standard deviation of VAP.", echo = FALSE}
+
+this_folder <- "C:/Users/bensc/OneDrive/Documents/Data/FAO Data/"
+this_file <- "Value_of_Production_E_All_Data.csv"
+this_filepath <- paste0(this_folder, this_file)
+df_raw <- read.csv(this_filepath, stringsAsFactors = F)
+df_raw$Area.Code <- NULL
+df_raw$Item.Code <- NULL
+df_raw$Element.Code <- NULL
+colnames(df_raw) <- gsub("Y", "", colnames(df_raw))
+ind_rm <- grep("F", colnames(df_raw))
+df_raw <- df_raw[, -ind_rm]
+df_raw <- df_raw %>% gather(Year, Value, `1961`:`2018`)
+these_areas <- c("World", "Colombia", "South America", "Central America")
+df_vap <- subset(df_raw, Area %in% these_areas)
+df_vap$Item[grep("Vegetables and Fruit Primary", df_vap$Item)] <- "Fruit & Veg."
+df_vap$Item[grep("Oilcrops", df_vap$Item)] <- "Oilcrops"
+
+pulses_vec <- c("Beans, dry", "Bambara beans", "Lentils", "Chick peas", "Peas, dry",
+                "Cow peas, dry", "Pigeon peas", "Pulses nes")
+
+df_pulses <- subset(df_vap, Item %in% pulses_vec)
+df_pulses <- df_pulses %>% group_by(Area, Element, Unit, Year) %>%
+  summarise(Value = sum(Value, na.rm = T)) %>% as.data.frame()
+df_pulses$Item <- "Pulses, Total"
+df_pulses <- df_pulses[, colnames(df_vap)]
+df_vap <- as.data.frame(rbind(df_vap, df_pulses))
+colnames(df_vap)[ncol(df_vap)] <- "VAP"
+#----------------------------------------------------------------------------
+these_areas <- c("World", "Colombia", "South America", "Central America")
+df_vap <- subset(df_vap, Area %in% these_areas &
+                   Element == "Gross Production Value (constant 2014-2016 1000 I$)")
+# "Gross Production Value (constant 2014-2016 million US$)"
+#unique(df_vap$Element)
+df_mu <- df_vap %>% group_by(Area, Item) %>%
+  summarise(mu = mean(VAP, na.rm = T)) %>% as.data.frame()
+df_sd <- df_vap %>% group_by(Area, Item) %>%
+  summarise(sd = sd(VAP, na.rm = T)) %>% as.data.frame()
+df_plot <- merge(df_mu, df_sd, by = c("Area", "Item"))
+df_plot <- subset(df_plot, Area %in% these_areas)
+df_plot$`logged mean VAP` <- log(df_plot$mu)
+df_plot$`logged stand. dev. VAP` <- log(df_plot$sd)
+
+gg <- ggplot(df_plot, aes(x = `logged stand. dev. VAP`, y = `logged mean VAP`))
+gg <- gg + geom_point()
+#gg <- gg + scale_x_log10() + scale_y_log10()
+gg <- gg + facet_wrap(~Area, scales = "free")
+gg
+
+```
+
+The regression for Colombia is:
+
+```{r}
+
+df_mod <- subset(df_plot, Area == "Colombia")
+mod <- lm(lmu ~ lsd, df_mod)
+summary(mod)
+yint <- coefficients(mod)[1]
+slope <- coefficients(mod)[2]
+
+```
+
+The regression equation is:
+
+\begin{equation}
+\ln(\mu_i) \approx `r slope` \ln(\sigma_i) + `r yint`
+\end{equation}
+
+Where $\mu_i$ and $\sigma_i$ are the mean VAP and standard deviation of VAP, respectively, defined as follows.
+
+\begin{equation}
+\mu_i = a_i E[P_i y_i^*]
+\sigma = a_i \sqrt{Var[P_i y_i^*]}
+\end{equation}
+
+Where $a_i$ is the harvested area of commodity $i$.
+
+The fitted equation can then be solved for harvested area $a_i$.
+
+\begin{equation}
+a_i \approx \left( e^{`r yint`} \frac{\sigma^{`r slope`}}{P_i y_i^*} \right)^{\frac{1}{1 - `r slope`}}
+\end{equation}
+
+This gives us a model of area as a function of yield and price risk $\sigma_i$, price $P_i$, yield $y^*$ (which is a function of many other things, as derived above), and the fitted parameters `r slope` and `r yint`.
+
+$\rightarrow$ An increase in the expected revenue from commodity $i$, whether through an increase in output price or increase in yield (from technology adoption, for example), results in lower area allocated to that commodity.
+
+$\rightarrow$ A decrease in the price and yield risk $\sigma_i$ of commodity $i$ also reduces area allocated to the commodity.
+
+$\Rightarrow$ New technology that reduces yield risk and/or increases yield reduces area (for given prices). Uptake of such technology may thus be considered sustainable intestification.
+
+# Modeling new technology release and uptake
+
+New technology can be modeled either as a change in one of the $\alpha_i$ or as a change in the basal yield (a.k.a. "total factor productivity") $y_0$.
+
+If the change in technology comes in the form of a more efficient input which leaves the other input technology unaltered, then this can be modeled as an increase in the corresponding yield response $\alpha_i$. Assuming that only those who stand to increase their net revenue will adopt, the following adoption condition can be derived (details in Appendix).
+
+\begin{equation}
+y^* > y_0 (w_i / \alpha_i e^{\eta(\mathbf{w}, \alpha_i) - \eta(P_i, \alpha_i)})^h \chi \kappa \gamma
+\end{equation}
+
+That is, only farms (or pixels) with a baseline yield higher than this will find it profitable to adopt. Farms with a baseline yield below this would incur a loss in net benefit if they were to adopt.
+
+If the change in technology comes in the form of improved genetic material that effectively improves yield response to several inputs at once, it is more appropriate to model this as a change in the basal yield $y_0$. In this case, the adoption condition works out to
+
+\begin{equation}
+\frac{\partial \ln (\gamma)}{\partial \ln (y_0)} > -1
+\end{equation}
+
+For this study, it seems to me that the first technology model applies. I.e. we model Yara fertilizer adoption as an increase in the $\alpha_i$ corresponding to fertilizer. In other words, we increase the fertilizer elasticity of yield.
+
+# Commodity focus
+
+The following commodities account for ~90% of total cropland in Colombia as of 2017. "Total cropland" comes from the CCI LC remote sensing data (herbaceous crops), downloaded from FAOSTAT.
+
+```{r}
+
+this_file <- "Environment_LandCover_E_All_Data.csv"
+this_filepath <- paste0(this_folder, this_file)
+df_raw <- read.csv(this_filepath, stringsAsFactors = F)
+rm_cols <- grep("Code|F", colnames(df_raw))
+df_raw <- df_raw[, -rm_cols]
+colnames(df_raw) <- gsub("Y", "", colnames(df_raw))
+df_raw <- df_raw %>% gather(Year, Value, `1992`:`2018`)
+df_cover <- subset(df_raw, Element == "Area from CCI_LC")
+df_cover$Element <- NULL 
+df_cover$Value <- 1000 * df_cover$Value
+df_cover$Unit <- NULL
+df_cropCover <- subset(df_cover, Item == "Herbaceous crops")
+df_grassCover <- subset(df_cover, Item == "Grassland")
+df_cropCover$Item <- NULL
+df_grassCover$Item <- NULL
+colnames(df_cropCover)[ncol(df_cropCover)] <- "Total cropland"
+colnames(df_grassCover)[ncol(df_grassCover)] <- "Total grassland"
+#----------------------------------------------------------------------------
+df_area <- subset(df_crop, Element == "Area harvested")
+df_area$Element <- NULL
+colnames(df_area)[ncol(df_area)] <- "Area harv"
+df_area <- merge(df_area, df_cropCover, by = c("Area", "Year"))
+df_area$`Area share` <- 100 * df_area$`Area harv` / df_area$`Total cropland`
+
+df_q <- subset(df_area, Area == "Colombia" & Year == 2017)
+df_q <- df_q[-grep(", Total|Rice Milled Eqv", df_q$Item), ]
+
+ind_top <- which(df_q$`Area share` > 8)
+df_q[ind_top, ]
+sum(df_q$`Area share`[ind_top])
+
+# q <- quantile(df_q$`Area share`, probs = 0.9, na.rm = T)
+# ind_top <- which(df_q$`Area share` > q)
+# df_q[ind_top, ]
+# sum(df_q$`Area share`[ind_top])
+
+df_table <- df_q
+
+
+```
+
+# Modeling GHG impacts
+
+Can build off GHG conversion factors on page 12 of Bangladesh study.
